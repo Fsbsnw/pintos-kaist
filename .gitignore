@@ -1,0 +1,9 @@
+*.o
+*.d
+*.errors
+*.output
+*.result
+*.bin
+*.dsk
+*.s
+results

@@ -28,6 +28,8 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -39,6 +41,8 @@ static struct lock tid_lock;
 
 /* Thread destruction requests */
 static struct list destruction_req;
+
+
 
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
@@ -106,12 +110,13 @@ thread_init (void) {
 	lgdt (&gdt_ds);
 
 	/* Init the globla thread context */
-	lock_init (&tid_lock);
-	list_init (&ready_list);
+	lock_init (&tid_lock); // lock 초기화
+	list_init (&ready_list); // list 초기화 -> list는 연결리스트 구조체로 되어있음
+	list_init (&sleep_list); // sleep_list
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
-	initial_thread = running_thread ();
+	initial_thread = running_thread (); 
 	init_thread (initial_thread, "main", PRI_DEFAULT);
 	initial_thread->status = THREAD_RUNNING;
 	initial_thread->tid = allocate_tid ();
@@ -209,6 +214,8 @@ thread_create (const char *name, int priority,
 
 	return tid;
 }
+
+//TODO
 
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
