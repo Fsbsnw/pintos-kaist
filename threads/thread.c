@@ -11,6 +11,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "lib/kernel/list.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -41,6 +42,8 @@ static struct lock tid_lock;
 
 /* Thread destruction requests */
 static struct list destruction_req;
+
+static int64_t global_ticks; /* ready list에서 맨 처음으로 awake할 스레드의 tick 값 */
 
 
 
@@ -114,6 +117,7 @@ thread_init (void) {
 	list_init (&ready_list); // list 초기화 -> list는 연결리스트 구조체로 되어있음
 	list_init (&sleep_list); // sleep_list
 	list_init (&destruction_req);
+	global_ticks = INT64_MAX;
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread (); 
@@ -157,6 +161,9 @@ thread_tick (void) {
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
 		intr_yield_on_return ();
+}
+void global_ticks_to_awake(int64_t ticks){
+	global_ticks = (global_ticks>ticks) ? ticks : global_ticks;
 }
 
 /* Prints thread statistics. */
@@ -214,8 +221,55 @@ thread_create (const char *name, int priority,
 
 	return tid;
 }
-
+		
 //TODO
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+int64_t get_global_tick_to_awake(void) {
+	return global_ticks;
+}
+void update_next_tick_to_awake(int64_t ticks){
+	global_ticks = (global_ticks>ticks) ? ticks : global_ticks;
+}
+void 
+thread_sleep(int64_t then){
+	struct thread *curr  = thread_current();
+	enum intr_level old_level;
+	ASSERT(!intr_context());
+	old_level = intr_disable(); // 스레드를 list에 추가해주는 일은 인터럽트가 걸리면 안 된다.	
+
+	ASSERT(curr != idle_thread);  // idle thread라면 종료.
+	
+	curr->tick = then;						// wakeup_tick 업데이트
+	update_next_tick_to_awake(curr->tick); 	// next_tick_to_awake 업데이트
+	list_push_back (&sleep_list, &curr->elem);		// sleep_list에 추가
+
+	/* 스레드를 sleep 시킨다. */
+	thread_block();
+
+	/* 인터럽트 원복 */
+	intr_set_level(old_level);
+	
+
+
+}
+void thread_awake(int64_t ticks){
+	struct list_elem* cur = list_begin(&sleep_list);
+	struct thread* t;
+
+	/* sleep list의 끝까지 순환한다. */
+	while(cur != list_end(&sleep_list)){
+		t = list_entry(cur, struct thread, elem);
+
+		if (ticks >= t->tick){  // 깨울 시간이 지났다
+			cur = list_remove(&t->elem);
+			thread_unblock(t);
+		}
+		else{  // 아직 안 깨워도 된다 : 다음 쓰레드로 넘어간다.
+			cur = list_next(cur);
+			update_next_tick_to_awake(t->tick);  // next_tick이 바뀌었을 수 있으므로 업데이트해준다.
+		}
+	}
+}
 
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
