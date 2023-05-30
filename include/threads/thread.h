@@ -92,9 +92,18 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int64_t tick;						/* Wake Up ticks*/
 	int priority;                       /* Priority. */
+	/* priority donation */
+	int init_priority;
+
+	struct lock *wait_on_lock;
+
+	struct list donations;
+	struct list_elem donation_elem;
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+
+
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
