@@ -219,7 +219,30 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	/* compare priority to current running thread and yield it */
+	if (t->priority > thread_current()->priority)
+		thread_yield();
+
+	test_max_priority(); // 이걸로도 된다.
+
 	return tid;
+}
+
+bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	struct thread* thread_a =  list_entry(a, struct thread, elem);
+	struct thread* thread_b =  list_entry(b, struct thread, elem);
+	return (thread_a->priority > thread_b->priority);
+}
+void test_max_priority(void){
+	if (list_empty(&ready_list))
+		return;
+
+	struct thread* max_priority = list_entry(list_front(&ready_list), struct thread, elem);
+
+	if (max_priority->priority > thread_current()->priority){
+		thread_yield();
+	}
+
 }
 		
 //TODO
@@ -301,7 +324,11 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+
+	/*--------------------------priority-------------------------*/
+	/* list에 삽입 시 list_insert_ordered()를 이용한다. */
+	list_insert_ordered (&ready_list, &t->elem, &cmp_priority, NULL);
+	/*--------------------------priority-------------------------*/
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -363,8 +390,11 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
+	/*-------------------------priority------------------------*/
+	/* 우선순위대로 정렬되어 삽입되도록 한다. */
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
+	/*-------------------------priority------------------------*/
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -373,6 +403,8 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+
+	test_max_priority();  // 호출한다.
 }
 
 /* Returns the current thread's priority. */
