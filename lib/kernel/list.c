@@ -425,7 +425,7 @@ list_insert_ordered (struct list *list, struct list_elem *elem,
 	ASSERT (less != NULL);
 
 	for (e = list_begin (list); e != list_end (list); e = list_next (e))
-		if (less (elem, e, aux))
+		if (less (elem, e, aux)) // less function의 인자로 elem, e, aux를 넣어준다.
 			break;
 	return list_insert (e, elem);
 }

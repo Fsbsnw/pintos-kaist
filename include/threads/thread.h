@@ -87,18 +87,19 @@ typedef int tid_t;
  * blocked state is on a semaphore wait list. */
 struct thread {
 	/* Owned by thread.c. */
-	tid_t tid;                          /* Thread identifier. */
-	enum thread_status status;          /* Thread state. */
+	tid_t tid;                          /* Thread 식별자 */
+	enum thread_status status;          /* Thread 상태 */
 	char name[16];                      /* Name (for debugging purposes). */
-	int64_t tick;						/* Wake Up ticks*/
+	int64_t tick;						/* 깨울 tick*/
 	int priority;                       /* Priority. */
+
 	/* priority donation */
-	int init_priority;
+	int init_priority; // 우선순위를 donation받을 때, 자신의 원래 우선순위를 저장할 수 있는 변수
 
 	struct lock *wait_on_lock;
 
-	struct list donations;
-	struct list_elem donation_elem;
+	struct list donations;  // multiple donation을 위함 - 자신에게 priority를 donate한 스레드
+	struct list_elem donation_elem; // multiple donation을 위함
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -152,6 +153,8 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+
 void test_max_priority(void);
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 void thread_set_priority(int new_priority);

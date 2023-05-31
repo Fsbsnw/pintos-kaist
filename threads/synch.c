@@ -41,6 +41,8 @@
 
    - up or "V": increment the value (and wake up one waiting
    thread, if any). */
+
+/* 정해진 value 값으로 먼저 semaphore의 counting value를 초기화 해준다. */
 void
 sema_init (struct semaphore *sema, unsigned value) {
 	ASSERT (sema != NULL);
@@ -65,10 +67,17 @@ sema_down (struct semaphore *sema) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
+
+	/* value의 값이 0이면 해당 공유 자원을 사용할 수 없다. */
+	/* 해당 스레드가 while문을 돌면서 계속 value의 값이 up 되기를 기다리고 있다. */
+	/* 스레드가 block되었으므로 여기서 코드가 멈춘다. */
 	while (sema->value == 0) {
 		list_insert_ordered (&sema->waiters, &thread_current ()->elem, cmp_priority, 0);
 		thread_block ();
 	}
+
+	/* UP이 되어 while문을 빠져나온 다음 공유 자원을 차지했다. */
+	/* 자신이 공유자원을 사용중이므로 value를 DOWN한다. */
 	sema->value--;
 	intr_set_level (old_level);
 }
@@ -102,6 +111,8 @@ sema_try_down (struct semaphore *sema) {
    and wakes up one thread of those waiting for SEMA, if any.
 
    This function may be called from an interrupt handler. */
+
+/* waiting list에서 그 다음 스레드가 공유자원을 사용할 수 있도록 unblock */
 void
 sema_up (struct semaphore *sema) {
 	enum intr_level old_level;
@@ -174,7 +185,7 @@ lock_init (struct lock *lock) {
 	ASSERT (lock != NULL);
 
 	lock->holder = NULL;
-	sema_init (&lock->semaphore, 1);
+	sema_init (&lock->semaphore, 1); // value를 1로 초기화
 }
 
 
@@ -299,7 +310,7 @@ lock_release (struct lock *lock) {
 	refresh_priority();  // 현재 스레드의 priority를 업데이트한다.
 
 	lock->holder = NULL;
-	sema_up (&lock->semaphore);
+	sema_up (&lock->semaphore); // sema를 up시켜 해당 Lock에서 기다리고 있는 스레드를 하나 깨운다.
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -365,6 +376,7 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	lock_acquire (lock);
 }
 
+/* thread의 우선순위로 비교해서 정렬  */
 bool sema_compare_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
 	struct semaphore_elem* sema_a = list_entry(a, struct semaphore_elem, elem);
 	struct semaphore_elem* sema_b = list_entry(b, struct semaphore_elem, elem);

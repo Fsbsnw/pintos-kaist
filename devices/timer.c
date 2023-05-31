@@ -88,14 +88,15 @@ timer_elapsed (int64_t then) {
 }
 
 /* Suspends execution for approximately TICKS timer ticks. */
-// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
 void
 timer_sleep (int64_t ticks) {
+	// ticks동안 해당 스레드를 재움
 	int64_t start = timer_ticks ();
 
 	ASSERT (intr_get_level () == INTR_ON);
 	
-	thread_sleep(start + ticks);
+	thread_sleep(start + ticks);  
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -122,12 +123,12 @@ timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 /* Timer interrupt handler. */
-// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
-	thread_tick ();
+	thread_tick (); // 현재 진행되고 있는 tick의 값을 리턴한다.
 
+	// 매 tick마다 깨우는 것이 아니라 global_tick과 비교해서 tick보다 global_tick이 더 작을 때만 깨움
 	if (get_global_tick_to_awake() <= ticks)
 		thread_awake(ticks);
 }
