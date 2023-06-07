@@ -240,11 +240,11 @@ void test_max_priority(void){
 		return;
 
 	//리스트에서 가장 높은 우선순위를 가진 스레드
-	struct thread* max_priority = list_entry(list_front(&ready_list), struct thread, elem);
+	//struct thread* max_priority = list_entry(list_front(&ready_list), struct thread, elem);
 
 
    // 현재 스레드의 우선순위보다 리스트에서 가장 높은 우선순위를 가진 스레드가 더 우선순위가 높다면 
-	if (max_priority->priority > thread_current()->priority){
+	if (!intr_context() && cmp_priority(list_front(&ready_list), &thread_current()->elem,NULL)){
 		thread_yield();
 	}
 
@@ -534,7 +534,7 @@ next_thread_to_run (void) {
 void
 do_iret (struct intr_frame *tf) {
 	__asm __volatile(
-			"movq %0, %%rsp\n"
+			"movq %0, %%rsp\n"     // 스택 포인터가 0, 즉 tf의 맨 처음(tf.R)을 가리킨다.
 			"movq 0(%%rsp),%%r15\n"
 			"movq 8(%%rsp),%%r14\n"
 			"movq 16(%%rsp),%%r13\n"

@@ -74,8 +74,13 @@ main (void) {
 	bss_init ();
 
 	/* Break command line into arguments and parse options. */
-	argv = read_command_line ();
+	argv = read_command_line (); // 커맨드 라인을 읽어와 argv에 저장
+	// argv = ["pintos", "-q","run", "'echo x'", NULL]
 	argv = parse_options (argv);
+	// argv를 parsing하고 추가적인 option들을 세팅한다.
+	// "run" 등의 action부터 argv에 다시 넣는다.
+	// argv = ["run","'echo x'", NULL]
+
 
 	/* Initialize ourselves as a thread so we can use locks,
 	   then enable console locking. */
@@ -119,7 +124,7 @@ main (void) {
 	printf ("Boot complete.\n");
 
 	/* Run actions specified on kernel command line. */
-	run_actions (argv);
+	run_actions (argv); // 해당 인자(argv)를 기준으로 run_actions() 실행
 
 	/* Finish up. */
 	if (power_off_when_done)
@@ -264,6 +269,7 @@ run_actions (char **argv) {
 	};
 
 	/* Table of supported actions. */
+	/* 지금 actions 에는 "run"밖에 없다. "run"과 동일한 argv가 들어와야 run_task() 함수가 실행! */
 	static const struct action actions[] = {
 		{"run", 2, run_task},
 #ifdef FILESYS
@@ -276,25 +282,30 @@ run_actions (char **argv) {
 		{NULL, 0, NULL},
 	};
 
+	// NULL을 만날 때까지 argv를 하나하나씩 실행(["run"->"'echo x'"->NULL])
 	while (*argv != NULL) {
 		const struct action *a;
 		int i;
 
 		/* Find action name. */
+		/* 인자로 받은 *argv와 원래 저장되어 있던 action이랑 매칭 되는지 확인 */
+		// 만약 *argv = "run", a->name = "run"
 		for (a = actions; ; a++)
 			if (a->name == NULL)
 				PANIC ("unknown action `%s' (use -h for help)", *argv);
-			else if (!strcmp (*argv, a->name))
+			else if (!strcmp (*argv, a->name)) // *argv와 a->name 같다면
 				break;
 
 		/* Check for required arguments. */
+		/* *argv 개수가 잘 있는지 */
 		for (i = 1; i < a->argc; i++)
 			if (argv[i] == NULL)
 				PANIC ("action `%s' requires %d argument(s)", *argv, a->argc - 1);
 
 		/* Invoke action and advance. */
-		a->function (argv);
-		argv += a->argc;
+		/* 각 인자들에 맞는 실행 시작. */
+		a->function (argv); // run_task(["run","'echo x'", NULL])
+		argv += a->argc; // a-> argc =2
 	}
 
 }
