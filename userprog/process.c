@@ -38,23 +38,28 @@ process_init (void) {
  * before process_create_initd() returns. Returns the initd's
  * thread id, or TID_ERROR if the thread cannot be created.
  * Notice that THIS SHOULD BE CALLED ONCE. */
-tid_t
-process_create_initd (const char *file_name) {
-	char *fn_copy;
-	tid_t tid;
+tid_t process_create_initd(const char *file_name)
+{
+    char *fn_copy;
+    tid_t tid;
 
-	/* Make a copy of FILE_NAME.
-	 * Otherwise there's a race between the caller and load(). */
-	fn_copy = palloc_get_page (0);
-	if (fn_copy == NULL)
-		return TID_ERROR;
-	strlcpy (fn_copy, file_name, PGSIZE);
+    /* Make a copy of FILE_NAME.
+     * Otherwise there's a race between the caller and load(). */
+    fn_copy = palloc_get_page(0);
+    if (fn_copy == NULL)
+        return TID_ERROR;
+    strlcpy(fn_copy, file_name, PGSIZE);
 
-	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
-	if (tid == TID_ERROR)
-		palloc_free_page (fn_copy);
-	return tid;
+    // Argument Passing ~
+    char *save_ptr;
+    strtok_r(file_name, " ", &save_ptr);
+    // ~ Argument Passing
+
+    /* Create a new thread to execute FILE_NAME. */
+    tid = thread_create(file_name, PRI_DEFAULT, initd, fn_copy);
+    if (tid == TID_ERROR)
+        palloc_free_page(fn_copy);
+    return tid;
 }
 
 /* A thread function that launches first user process. */
@@ -112,6 +117,43 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 }
 #endif
 
+void argument_stack(char **parse, int count, void **rsp) // 주소를 전달받았으므로 이중 포인터 사용
+{
+    // 프로그램 이름, 인자 문자열 push
+    for (int i = count - 1; i > -1; i--)
+    {
+        for (int j = strlen(parse[i]); j > -1; j--)
+        {
+            (*rsp)--;                      // 스택 주소 감소
+            **(char **)rsp = parse[i][j]; // 주소에 문자 저장
+        }
+        parse[i] = *(char **)rsp; // parse[i]에 현재 rsp의 값 저장해둠(지금 저장한 인자가 시작하는 주소값)
+    }
+
+    // 정렬 패딩 push
+    int padding = (int)*rsp % 8;
+    for (int i = 0; i < padding; i++)
+    {
+        (*rsp)--;
+        **(uint8_t **)rsp = 0; // rsp 직전까지 값 채움
+    }
+
+    // 인자 문자열 종료를 나타내는 0 push
+    (*rsp) -= 8;
+    **(char ***)rsp = 0; // char* 타입의 0 추가
+
+    // 각 인자 문자열의 주소 push
+    for (int i = count - 1; i > -1; i--)
+    {
+        (*rsp) -= 8; // 다음 주소로 이동
+        **(char ***)rsp = parse[i]; // char* 타입의 주소 추가
+    }
+
+    // return address push
+    (*rsp) -= 8;
+    **(void ***)rsp = 0; // void* 타입의 0 추가
+}
+
 /* A thread function that copies parent's execution context.
  * Hint) parent->tf does not hold the userland context of the process.
  *       That is, you are required to pass second argument of process_fork to
@@ -160,33 +202,53 @@ error:
 
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
-int
-process_exec (void *f_name) {
-	char *file_name = f_name;
-	bool success;
+int process_exec(void *f_name)
+{ // 인자: 실행하려는 이진 파일의 이름
+    char *file_name = f_name;
+    bool success;
 
-	/* We cannot use the intr_frame in the thread structure.
-	 * This is because when current thread rescheduled,
-	 * it stores the execution information to the member. */
-	struct intr_frame _if;
-	_if.ds = _if.es = _if.ss = SEL_UDSEG;
-	_if.cs = SEL_UCSEG;
-	_if.eflags = FLAG_IF | FLAG_MBS;
+    /* We cannot use the intr_frame in the thread structure.
+     * This is because when current thread rescheduled,
+     * it stores the execution information to the member. */
+    struct intr_frame _if;
+    _if.ds = _if.es = _if.ss = SEL_UDSEG;
+    _if.cs = SEL_UCSEG;
+    _if.eflags = FLAG_IF | FLAG_MBS;
 
-	/* We first kill the current context */
-	process_cleanup ();
+    /* We first kill the current context */
+    process_cleanup();
 
-	/* And then load the binary */
-	success = load (file_name, &_if);
+    // Argument Passing ~
+    char *parse[64];
+    char *token, *save_ptr;
+    int count = 0;
+    for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
+        parse[count++] = token;
+    // ~ Argument Passing
 
-	/* If load failed, quit. */
-	palloc_free_page (file_name);
-	if (!success)
-		return -1;
+    /* And then load the binary */
+    success = load(file_name, &_if);
+    // 이진 파일을 디스크에서 메모리로 로드한다.
+    // 로드된 후 실행할 메인 함수의 시작 주소 필드 초기화 (if_.rip)
+    // user stack의 top 포인터 초기화 (if_.rsp)
+    // 위 과정을 성공하면 실행을 계속하고, 실패하면 스레드가 종료된다.
 
-	/* Start switched process. */
-	do_iret (&_if);
-	NOT_REACHED ();
+    // Argument Passing ~
+    argument_stack(parse, count, &_if.rsp); // 함수 내부에서 parse와 rsp의 값을 직접 변경하기 위해 주소 전달
+    _if.R.rdi = count;
+    _if.R.rsi = (char *)_if.rsp + 8;
+
+    hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack을 16진수로 프린트
+    // ~ Argument Passing
+
+    /* If load failed, quit. */
+    palloc_free_page(file_name);
+    if (!success)
+        return -1;
+
+    /* Start switched process. */
+    do_iret(&_if);
+    NOT_REACHED();
 }
 
 
@@ -199,12 +261,15 @@ process_exec (void *f_name) {
  *
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
-int
-process_wait (tid_t child_tid UNUSED) {
-	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-	 * XXX:       to add infinite loop here before
-	 * XXX:       implementing the process_wait. */
-	return -1;
+int process_wait(tid_t child_tid UNUSED)
+{
+  /* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
+   * XXX:       to add infinite loop here before
+   * XXX:       implementing the process_wait. */
+  for (int i = 0; i < 100000000; i++)
+  {
+  }
+  return -1;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
