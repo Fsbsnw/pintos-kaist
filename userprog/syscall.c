@@ -7,9 +7,13 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "filesys/filesys.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+void check_address(void *addr);
+void halt (void);
+void exit (int status);
 
 /* System call.
  *
@@ -41,6 +45,42 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+	int syscall_n = f->R.rax; /* 시스템 콜 넘버 */
+	switch(syscall_n){
+		case SYS_HALT:
+			halt();
+			break;
+		case SYS_EXIT:
+			exit(f->R.rdi);
+	}
+	// printf ("system call!\n");
+	// thread_exit ();
+}
+
+
+void halt(void)
+{
+	power_off();
+}
+
+
+void check_address(void *addr)
+{
+	if (addr == NULL)
+		exit(-1);
+
+	if (!is_user_vaddr(addr)) // 유저 영역이 아니거나 NULL이면 프로세스 종료
+		exit(-1);
+
+	if (pml4_get_page(thread_current()->pml4, addr) == NULL)
+		exit(-1);
+}
+
+
+void exit(int status)
+{
+	struct thread *curr = thread_current();
+	curr->exit_status = status; // 이거 wait에서 사용?
+	printf("%s: exit(%d)\n", curr->name, status);
+	thread_exit();
 }
