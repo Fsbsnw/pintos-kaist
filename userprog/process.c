@@ -26,10 +26,11 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+int process_add_file(struct file *f);
 
 /* General process initializer for initd and other process. */
-static void
-process_init (void) {
+static void process_init(void)
+{
 	struct thread *current = thread_current ();
 }
 
@@ -238,7 +239,7 @@ int process_exec(void *f_name)
     _if.R.rdi = count;
     _if.R.rsi = (char *)_if.rsp + 8;
 
-    hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack을 16진수로 프린트
+    //hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack을 16진수로 프린트
     // ~ Argument Passing
 
     /* If load failed, quit. */
@@ -250,7 +251,6 @@ int process_exec(void *f_name)
     do_iret(&_if);
     NOT_REACHED();
 }
-
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
@@ -266,7 +266,7 @@ int process_wait(tid_t child_tid UNUSED)
   /* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
    * XXX:       to add infinite loop here before
    * XXX:       implementing the process_wait. */
-  for (int i = 0; i < 100000000; i++)
+  for (int i = 0; i < 1000000000; i++)
   {
   }
   return -1;
@@ -280,8 +280,8 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-
-	process_cleanup ();
+	// palloc_free_multiple(curr->fdTable, FDT_PAGES);
+	process_cleanup();
 }
 
 /* Free the current process's resources. */
@@ -406,6 +406,8 @@ load (const char *file_name, struct intr_frame *if_) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
 	}
+
+	t->running = file;
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
