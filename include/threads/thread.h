@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -29,8 +30,8 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 /* Project2 - file Descriptor */
-#define FDT_PAGES 3
-#define FDCOUNT_LIMIT FDT_PAGES * (1 << 9)
+#define FDT_PAGES 2
+#define FDCOUNT_LIMIT 128
 
 
 /* A kernel thread or user process.
@@ -116,8 +117,14 @@ struct thread {
 	struct file *running;
 
 	/* Project 2 - parents : children process */
-	
 
+	struct intr_frame parent_if;
+	struct list child_process_list;
+	struct list_elem child_elem;
+
+	struct semaphore fork_sema;
+	struct semaphore free_sema;
+	struct semaphore wait_sema;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */

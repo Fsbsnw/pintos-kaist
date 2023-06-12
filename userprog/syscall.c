@@ -7,12 +7,13 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
-#include <filesys/filesys.h>
+#include "filesys/filesys.h"
 #include "filesys/file.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 void halt(void);
+void exit(int status);
 int write(int fd, const void *buffer, unsigned size);
 void check_address(void *addr);
 bool create(const char *file, unsigned initial_size);
@@ -22,8 +23,13 @@ int add_file_to_fdt(struct file *f);
 int read(int fd, void *buffer, unsigned size);
 struct file *find_file_by_fd(int fd);
 void close_file_by_fd(int fd);
-int file_size(int fd);
 void close(int fd);
+int wait(int pid);
+int exec(const char *cmd_line);
+tid_t fork(const char *thread_name, struct intr_frame *f);
+int file_size(int fd);
+void seek(int fd, unsigned position);
+unsigned tell(int fd);
 
 /* System call.
  *
@@ -92,8 +98,28 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		close(f->R.rdi);
 		break;
 
-		default:
-		thread_exit();
+	case SYS_WAIT:
+		f->R.rax = wait(f->R.rdi);
+		break;
+
+	case SYS_EXEC:
+		f->R.rax = exec(f->R.rdi);
+		break;
+
+	case SYS_FORK:
+		f->R.rax = fork(f->R.rdi, f);
+		break;
+
+	// 왜 쓰는지 이해 아직 못 함
+	case SYS_FILESIZE:
+		f->R.rax = file_size(f->R.rdi);
+		break;
+
+	case SYS_SEEK:
+		seek(f->R.rdi, f->R.rsi);
+		break;
+	case SYS_TELL:
+		f->R.rax = tell(f->R.rdi);
 		break;
 	}
 }
@@ -113,38 +139,40 @@ void exit(int status)
 
 int write(int fd, const void *buffer, unsigned size)
 {
-	// check_address(buffer);
-	// struct file *fileobj = find_file_by_fd(fd);
-	// int write_result = 0;
+	check_address(buffer);
+	int write_result = 0;
 
-	// if (fileobj == NULL)
-	// {
-	// 	return -1;
-	// }
 
-	// if (fd == STDOUT_FILENO)
-	// {
-	// 	putbuf(buffer, size);
-	// 	write_result = size;
-	// }
-	// else
-	// {
-	// 	if (fd < 2)
-	// 	{
-	// 		return -1;
-	// 	}
-	// 	lock_acquire(&filesys_lock);
-	// 	write_result = file_write(fileobj, buffer, size);
-	// 	lock_release(&filesys_lock);
-	// }
-
-	// return write_result;
-
-	if(fd == 1)
+	if (fd == 1)
 	{
 		putbuf(buffer, size);
+		write_result = size;
 	}
-	return size;
+	else
+	{
+		if (fd < 2)
+		{
+			return -1;
+		}
+
+		struct file *fileobj = find_file_by_fd(fd);
+
+		if (fileobj == NULL)
+		{
+			return -1;
+		}
+		lock_acquire(&filesys_lock);
+		write_result = file_write(fileobj, buffer, size);
+		lock_release(&filesys_lock);
+	}
+
+	return write_result;
+
+	// if(fd == 1)
+	// {
+	// 	putbuf(buffer, size);
+	// }
+	// return size;
 }
 
 void check_address(void *addr)
@@ -224,30 +252,17 @@ void close_file_by_fd(int fd)
 	fdt[fd] = NULL;
 }
 
-int file_size(int fd)
-{
-	struct thread *cur = thread_current();
-	struct file *fileobj = find_file_by_fd(fd);
 
-	return file_length(fileobj);
-}
 
 int read(int fd, void *buffer, unsigned size)
 {
 	check_address(buffer);
-	struct thread *cur = thread_current();
-	struct file *fileobj = find_file_by_fd(fd);
 	char *ptr = (char *)buffer;
 	int read_result = 0;
 
-	if (fileobj == NULL)
-	{
-		return -1;
-	}
-
 	lock_acquire(&filesys_lock);
 
-	if (fd == STDIN_FILENO)
+	if (fd == 0)
 	{
 		for (int i = 0; i < size; i++)
 		{
@@ -264,7 +279,14 @@ int read(int fd, void *buffer, unsigned size)
 			lock_release(&filesys_lock);
 			return -1;
 		}
-		
+
+		struct file *fileobj = find_file_by_fd(fd);
+		if (fileobj == NULL)
+		{
+			lock_release(&filesys_lock);
+			return -1;
+		}
+
 		read_result = file_read(fileobj, buffer, size);
 		lock_release(&filesys_lock);
 	}
@@ -272,40 +294,62 @@ int read(int fd, void *buffer, unsigned size)
 	return read_result;
 }
 
-// int read(int fd, void *buffer, unsigned size)
-// {
-// 	check_address(buffer);
+int wait(int pid)
+{
+	return process_wait(pid);
+}
 
-// 	char *ptr = (char *)buffer;
-// 	int bytes_read = 0;
+int exec(const char *cmd_line)
+{
+	check_address(cmd_line);
 
-// 	lock_acquire(&filesys_lock);
-// 	if (fd == STDIN_FILENO)
-// 	{
-// 		for (int i = 0; i < size; i++)
-// 		{
-// 			*ptr++ = input_getc();
-// 			bytes_read++;
-// 		}
-// 		lock_release(&filesys_lock);
-// 	}
-// 	else
-// 	{
-// 		if (fd < 2)
-// 		{
+	char *fn_copy;
+	
+	fn_copy = palloc_get_page(0);
 
-// 			lock_release(&filesys_lock);
-// 			return -1;
-// 		}
-// 		struct file *file = find_file_by_fd(fd);
-// 		if (file == NULL)
-// 		{
+	if (fn_copy == NULL)
+	{
+		exit(-1);
+	}
+	printf("\nhi1 : %s\n\n", fn_copy);
+	// strlcpy(fn_copy, cmd_line, PGSIZE);
+	printf("\nhi2\n\n");
+	if (process_exec(fn_copy) == -1)
+	{
+		printf("\nhi3\n\n");
+		exit(-1);
+	}
+}
 
-// 			lock_release(&filesys_lock);
-// 			return -1;
-// 		}
-// 		bytes_read = file_read(file, buffer, size);
-// 		lock_release(&filesys_lock);
-// 	}
-// 	return bytes_read;
-// }
+tid_t fork(const char *thread_name, struct intr_frame *f)
+{
+	// printf("%s\n", thread_name);
+	return process_fork(thread_name, f);
+}
+
+int file_size(int fd)
+{
+	struct file *fileobj = find_file_by_fd(fd);
+	if (fileobj == NULL)
+	{
+		return -1;
+	}
+
+	return file_length(fileobj);
+}
+
+void seek(int fd, unsigned position)
+{
+	struct file *file = find_file_by_fd(fd);
+	if (file == NULL)
+		return;
+	file_seek(file, position);
+}
+
+unsigned tell(int fd)
+{
+	struct file *file = find_file_by_fd(fd);
+	if (file == NULL)
+		return;
+	return file_tell(file);
+}

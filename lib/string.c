@@ -13,7 +13,7 @@ memcpy (void *dst_, const void *src_, size_t size) {
 
 	while (size-- > 0)
 		*dst++ = *src++;
-
+	
 	return dst_;
 }
 
@@ -304,7 +304,6 @@ strlcpy (char *dst, const char *src, size_t size) {
 
 	ASSERT (dst != NULL);
 	ASSERT (src != NULL);
-
 	src_len = strlen (src);
 	if (size > 0) {
 		size_t dst_len = size - 1;

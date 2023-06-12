@@ -1,9 +1,10 @@
 {
     "files.associations": {
         "thread.h": "c",
-        "filesys.h": "c",
-        "file.h": "c",
-        "off_t.h": "c",
-        "*.inc": "c"
+        "syscall.h": "c",
+        "*.inc": "c",
+        "syscall-nr.h": "c",
+        "main.h": "c",
+        "vaddr.h": "c"
     }
 }
