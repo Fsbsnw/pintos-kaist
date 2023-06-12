@@ -75,7 +75,6 @@ sema_down (struct semaphore *sema) {
 		list_insert_ordered (&sema->waiters, &thread_current ()->elem, cmp_priority, 0);
 		thread_block ();
 	}
-
 	/* UP이 되어 while문을 빠져나온 다음 공유 자원을 차지했다. */
 	/* 자신이 공유자원을 사용중이므로 value를 DOWN한다. */
 	sema->value--;

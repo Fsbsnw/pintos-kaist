@@ -216,18 +216,21 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+
+	struct thread *cur = thread_current();
+	list_push_back(&cur->child_process_list, &t->child_elem);
+
 	t->fdTable = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
 	if (t->fdTable == NULL)
 	{
 		return TID_ERROR;
 	}
-
 	/* Add to run queue. */
 	thread_unblock (t);
 
 	/* compare priority to current running thread and yield it */
-	if (t->priority > thread_current()->priority)
-		thread_yield();
+	// if (t->priority > thread_current()->priority)
+	// 	thread_yield();
 
 	test_max_priority(); // 이걸로도 된다.
 
@@ -381,7 +384,6 @@ thread_exit (void) {
 #ifdef USERPROG
 	process_exit ();
 #endif
-
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
@@ -524,6 +526,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	/* syscall */
 	t->exit_status = 0;
 	t->fdIdx = 2;
+
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->free_sema, 0);
+	sema_init(&t->fork_sema, 0);
+	list_init(&t->child_process_list);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
